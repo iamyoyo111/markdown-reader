@@ -1,0 +1,33 @@
+{
+  "name": "interview-reader",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node server.mjs --dev",
+    "build": "tsc -b && vite build",
+    "preview": "node server.mjs",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "dompurify": "^3.3.1",
+    "express": "^5.3.0",
+    "lucide-react": "^0.468.0",
+    "marked": "^15.0.7",
+    "node-edge-tts": "^1.2.12",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.2.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.64.1",
+    "typescript": "~5.7.2",
+    "vite": "^6.1.0"
+  }
+}
