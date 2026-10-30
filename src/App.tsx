@@ -691,8 +691,8 @@ function App() {
             <AudioLines size={20} strokeWidth={2.2} />
           </div>
           <div className="brand-copy">
-            <strong>Interview Reader</strong>
-            <span>Read. Listen. Rehearse.</span>
+            <strong>Markdown Reader</strong>
+            <span>Read. Listen. Communicate.</span>
           </div>
         </div>
 

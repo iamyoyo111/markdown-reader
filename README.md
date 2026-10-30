@@ -1,14 +1,14 @@
-# Interview Reader
+# Markdown Reader
 
-面向英文面试准备的本地 Markdown 阅读、标题导航、字典查询与美式发音练习工具。
+面向英文会议、英文面试和技术交流的本地 Markdown 阅读、标题导航、字典查询与美式发音工具。
 
-Interview Reader 把面试稿、项目故事和常用表达集中在一个专注的阅读工作台里。你不需要在编辑器、翻译网站和朗读工具之间来回切换，就可以完成阅读、查词和跟读练习。
+Markdown Reader 把会议材料、面试稿、项目故事和常用表达集中在一个专注的阅读工作台里。你不需要在编辑器、翻译网站和朗读工具之间来回切换，就可以完成阅读、查词和跟读练习。
 
-![Interview Reader 主界面](docs/images/overview.png)
+![Markdown Reader 主界面](docs/images/overview.png)
 
 ## 解决的痛点
 
-准备英文面试时，材料通常散落在多个 Markdown 文件中，阅读、查词和跟读往往需要三个以上工具：
+参加英文会议、英文面试或跨国项目沟通时，材料通常散落在多个 Markdown 文件中，阅读、查词和跟读往往需要三个以上工具：
 
 - 在编辑器阅读英文答案时，遇到生词要切到浏览器查词。
 - 英文词典通常只有英文释义，缺少中文解释和双语例句。
@@ -16,7 +16,7 @@ Interview Reader 把面试稿、项目故事和常用表达集中在一个专注
 - 长文档缺少标题导航，反复滚动会打断练习节奏。
 - 把完整面试稿上传到在线工具，会带来隐私和资料泄露风险。
 
-Interview Reader 将文件阅读、标题跳转、单词查询和美式朗读整合到一个界面中。文件内容只在本机浏览器读取；只有用户主动选中的文本或查询词会发送给本地 API，再由本地服务请求外部语音或词典服务。
+Markdown Reader 将文件阅读、标题跳转、单词查询和美式朗读整合到一个界面中。文件内容只在本机浏览器读取；只有用户主动选中的文本或查询词会发送给本地 API，再由本地服务请求外部语音或词典服务。
 
 ## 功能
 
@@ -62,8 +62,8 @@ Interview Reader 将文件阅读、标题跳转、单词查询和美式朗读整
 ### 开发模式
 
 ```bash
-git clone https://github.com/iamyoyo111/interview-reader.git
-cd interview-reader
+git clone https://github.com/iamyoyo111/markdown-reader.git
+cd markdown-reader
 npm install
 npm run dev
 ```

@@ -109,7 +109,7 @@ app.post("/api/tts", async (request, response) => {
   let temporaryDirectory = "";
   try {
     temporaryDirectory = await mkdtemp(
-      path.join(os.tmpdir(), "interview-reader-tts-"),
+      path.join(os.tmpdir(), "markdown-reader-tts-"),
     );
     const audioPath = path.join(temporaryDirectory, "speech.mp3");
     await tts.ttsPromise(text, audioPath);
@@ -163,7 +163,7 @@ if (isDevelopment) {
 
 app.listen(port, "127.0.0.1", () => {
   console.log(
-    `Interview Reader running at http://127.0.0.1:${port}/ (${isDevelopment ? "development" : "production"})`,
+    `Markdown Reader running at http://127.0.0.1:${port}/ (${isDevelopment ? "development" : "production"})`,
   );
 });
 
