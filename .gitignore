@@ -2,3 +2,17 @@ node_modules/
 dist/
 artifacts/
 *.tsbuildinfo
+.env
+.env.*
+!.env.example
+.npmrc
+secrets/
+private/
+*.pem
+*.key
+*.p12
+*.pfx
+*.docx
+*.pdf
+.DS_Store
+Thumbs.db
