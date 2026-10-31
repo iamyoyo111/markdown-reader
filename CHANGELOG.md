@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 - 2026-10-31
+
+### Fixed
+
+- Restore the corresponding rendered paragraph when returning from Markdown editing to reading mode.
+- Preserve the previous heading and scroll ratio as fallback anchors.
+
 ## 0.2.0 - 2026-10-31
 
 ### Added

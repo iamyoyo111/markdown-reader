@@ -178,6 +178,34 @@ function renderMarkdownDocument(content: string) {
   };
 }
 
+function normalizeComparableText(value: string) {
+  return value
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[*_~`>#|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getSourceAnchorAtOffset(source: string, offset: number) {
+  const safeOffset = Math.min(Math.max(offset, 0), source.length);
+  const lineStart = source.lastIndexOf("\n", Math.max(0, safeOffset - 1)) + 1;
+  const nextLineBreak = source.indexOf("\n", safeOffset);
+  const lineEnd = nextLineBreak === -1 ? source.length : nextLineBreak;
+  let anchor = normalizeComparableText(source.slice(lineStart, lineEnd));
+
+  if (anchor.length < 8) {
+    const blockStart = source.lastIndexOf("\n\n", Math.max(0, safeOffset - 1)) + 2;
+    const blockEnd = source.indexOf("\n\n", safeOffset);
+    anchor = normalizeComparableText(
+      source.slice(blockStart, blockEnd === -1 ? source.length : blockEnd),
+    );
+  }
+
+  return anchor.slice(0, 100);
+}
+
 function getCaretRangePoint(x: number, y: number) {
   const documentWithCaret = document as Document & {
     caretPositionFromPoint?: (
@@ -258,6 +286,9 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef("");
   const playbackTypeRef = useRef<"audio" | "browser" | null>(null);
+  const readingHeadingRef = useRef("");
+  const readingScrollRatioRef = useRef(0);
+  const editorCursorRef = useRef(0);
   const isDirty = content !== savedContent;
 
   const renderedMarkdown = useMemo(
@@ -823,6 +854,81 @@ function App() {
     }
   }
 
+  function enterEditing() {
+    readingHeadingRef.current = activeHeadingId;
+    const maxScroll =
+      document.documentElement.scrollHeight - window.innerHeight;
+    readingScrollRatioRef.current =
+      maxScroll > 0 ? Math.min(1, Math.max(0, window.scrollY / maxScroll)) : 0;
+
+    let sourceOffset = Math.floor(
+      content.length * readingScrollRatioRef.current,
+    );
+    let searchFrom = 0;
+    for (const heading of headings) {
+      const headingOffset = content.indexOf(heading.text, searchFrom);
+      if (headingOffset === -1) continue;
+      if (heading.id === activeHeadingId) {
+        sourceOffset = headingOffset;
+        break;
+      }
+      searchFrom = headingOffset + heading.text.length;
+    }
+    editorCursorRef.current = sourceOffset;
+    setIsEditing(true);
+    window.requestAnimationFrame(() => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      editor.setSelectionRange(sourceOffset, sourceOffset);
+      const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
+      editor.scrollTop =
+        editorMaxScroll *
+        (content.length > 0 ? sourceOffset / content.length : 0);
+    });
+  }
+
+  function returnToReading() {
+    const sourceAnchor = getSourceAnchorAtOffset(
+      content,
+      editorCursorRef.current,
+    );
+    const headingId = readingHeadingRef.current;
+    const scrollRatio = readingScrollRatioRef.current;
+    setIsEditing(false);
+
+    window.setTimeout(() => {
+      const article = articleRef.current;
+      let target: HTMLElement | null = null;
+      const probe = sourceAnchor.slice(0, 60);
+
+      if (article && probe.length >= 8) {
+        const candidates = Array.from(
+          article.querySelectorAll<HTMLElement>(
+            "h1, h2, h3, h4, h5, h6, p, li, blockquote, pre, td, th",
+          ),
+        );
+        target =
+          candidates.find((candidate) =>
+            normalizeComparableText(candidate.textContent ?? "").includes(probe),
+          ) ?? null;
+      }
+
+      if (!target && headingId) {
+        target = document.getElementById(headingId);
+      }
+
+      if (target) {
+        target.scrollIntoView({ behavior: "auto", block: "center" });
+        return;
+      }
+
+      const maxScroll =
+        document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: Math.max(0, maxScroll * scrollRatio) });
+    }, 30);
+  }
+
   function jumpToHeading(id: string) {
     setActiveHeadingId(id);
     setIsEditing(false);
@@ -1182,7 +1288,7 @@ function App() {
               <div className="mode-switch" role="group" aria-label="阅读与编辑模式">
                 <button
                   className={!isEditing ? "active" : ""}
-                  onClick={() => setIsEditing(false)}
+                  onClick={returnToReading}
                   aria-label="阅读模式"
                   title="阅读模式"
                 >
@@ -1191,10 +1297,7 @@ function App() {
                 </button>
                 <button
                   className={isEditing ? "active" : ""}
-                  onClick={() => {
-                    setIsEditing(true);
-                    window.requestAnimationFrame(() => editorRef.current?.focus());
-                  }}
+                  onClick={enterEditing}
                   aria-label="编辑 Markdown"
                   title="编辑 Markdown"
                 >
@@ -1322,7 +1425,19 @@ function App() {
                   ref={editorRef}
                   className="markdown-source"
                   value={content}
-                  onChange={(event) => setContent(event.target.value)}
+                  onChange={(event) => {
+                    editorCursorRef.current = event.currentTarget.selectionStart;
+                    setContent(event.target.value);
+                  }}
+                  onSelect={(event) => {
+                    editorCursorRef.current = event.currentTarget.selectionStart;
+                  }}
+                  onClick={(event) => {
+                    editorCursorRef.current = event.currentTarget.selectionStart;
+                  }}
+                  onKeyUp={(event) => {
+                    editorCursorRef.current = event.currentTarget.selectionStart;
+                  }}
                   onKeyDown={(event) => {
                     if (event.key !== "Tab") return;
                     event.preventDefault();

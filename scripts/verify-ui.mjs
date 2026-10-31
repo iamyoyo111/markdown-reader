@@ -128,6 +128,34 @@ await desktop
 await desktop.locator(".workspace.nav-open").waitFor();
 await desktop.getByRole("tab", { name: /文件/ }).click();
 
+await desktop.getByRole("tab", { name: /目录/ }).click();
+await desktop
+  .getByRole("button", { name: /03\. Why this role/ })
+  .click();
+await desktop.waitForTimeout(700);
+await desktop.getByRole("button", { name: "编辑 Markdown" }).click();
+const returnPositionEditor = desktop.getByRole("textbox", {
+  name: "Markdown 源码编辑器",
+});
+await returnPositionEditor.evaluate((element) => {
+  const editor = element;
+  if (!(editor instanceof HTMLTextAreaElement)) return;
+  const offset = editor.value.indexOf("This role combines");
+  editor.focus();
+  editor.setSelectionRange(offset, offset);
+  editor.dispatchEvent(new Event("select", { bubbles: true }));
+});
+await desktop.getByRole("button", { name: "阅读模式" }).click();
+await desktop.waitForTimeout(250);
+const editorReturnVerified = await desktop.evaluate(() => {
+  const paragraph = Array.from(document.querySelectorAll("p")).find((item) =>
+    item.textContent?.includes("This role combines"),
+  );
+  if (!paragraph) return false;
+  const top = paragraph.getBoundingClientRect().top;
+  return window.scrollY > 0 && top > 100 && top < window.innerHeight;
+});
+
 const desktopOverflow = await desktop.evaluate(
   () => document.documentElement.scrollWidth - window.innerWidth,
 );
@@ -157,6 +185,7 @@ await desktop
 await desktop
   .locator(".markdown-body h1", { hasText: "Introduction" })
   .waitFor();
+await desktop.getByRole("tab", { name: /文件/ }).click();
 const rootFileCount = await desktop.locator(".file-item").count();
 const nestedFileVisible = await desktop
   .getByText("ignored", { exact: false })
@@ -224,6 +253,7 @@ console.log(
       nestedFileVisible,
       headingJumpVerified,
       sidebarCollapseVerified: sidebarCollapseVerified === 1,
+      editorReturnVerified,
       editorVerified,
       dirtyStateVisible,
       saveDownloadName: saveDownload.suggestedFilename(),
