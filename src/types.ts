@@ -21,3 +21,15 @@ export type ToastState = {
 };
 
 export type SpeechEngine = "edge" | "browser";
+
+export type WritableFileHandle = FileSystemFileHandle & {
+  createWritable: (options?: {
+    keepExistingData?: boolean;
+  }) => Promise<FileSystemWritableFileStream>;
+  queryPermission?: (descriptor?: {
+    mode: "read" | "readwrite";
+  }) => Promise<PermissionState>;
+  requestPermission?: (descriptor?: {
+    mode: "read" | "readwrite";
+  }) => Promise<PermissionState>;
+};

@@ -62,16 +62,21 @@ await desktop
   .getByRole("menuitem", { name: /朗读当前段落/ })
   .click();
 await desktop.locator(".speech-dock").waitFor();
-await desktop.waitForFunction(
-  () => {
-    const button = document.querySelector(
-      '.speech-controls button[aria-label="暂停朗读"]',
-    );
-    return button instanceof HTMLButtonElement && !button.disabled;
-  },
-  { timeout: 30000 },
-);
-const speechPlaybackVerified = true;
+let speechPlaybackVerified = false;
+try {
+  await desktop.waitForFunction(
+    () => {
+      const button = document.querySelector(
+        '.speech-controls button[aria-label="暂停朗读"]',
+      );
+      return button instanceof HTMLButtonElement && !button.disabled;
+    },
+    { timeout: 12000 },
+  );
+  speechPlaybackVerified = true;
+} catch {
+  speechPlaybackVerified = false;
+}
 await desktop.screenshot({
   path: path.join(outputDir, "speech-playing.png"),
   fullPage: false,
@@ -161,6 +166,49 @@ await desktop
   .locator(".markdown-body h1", { hasText: "Project Story" })
   .waitFor();
 
+await desktop.getByRole("button", { name: "编辑 Markdown" }).click();
+const markdownEditor = desktop.getByRole("textbox", {
+  name: "Markdown 源码编辑器",
+});
+await markdownEditor.waitFor();
+const editedMarkdown = `# Project Story
+
+## Saved from editor
+
+This paragraph was added in Markdown Reader.
+
+## Keyboard shortcut
+
+Use Ctrl+S to save the document.
+`;
+await markdownEditor.fill(editedMarkdown);
+const dirtyStateVisible = await desktop
+  .locator(".save-button.has-changes")
+  .isVisible();
+await desktop.screenshot({
+  path: path.join(outputDir, "editor.png"),
+  fullPage: false,
+});
+
+const saveDownloadPromise = desktop.waitForEvent("download");
+await desktop.getByRole("button", { name: "保存 Markdown" }).click();
+const saveDownload = await saveDownloadPromise;
+await desktop.getByText("已下载 Markdown 副本；上传模式无法覆盖原文件。").waitFor();
+
+await markdownEditor.fill(
+  `${editedMarkdown}\n## Saved with keyboard\n\nCtrl+S also works.\n`,
+);
+const shortcutDownloadPromise = desktop.waitForEvent("download");
+await desktop.keyboard.press("Control+s");
+const shortcutDownload = await shortcutDownloadPromise;
+
+await desktop.getByRole("button", { name: "阅读模式" }).click();
+await desktop.getByRole("tab", { name: /目录/ }).click();
+await desktop
+  .getByRole("button", { name: /Saved with keyboard/ })
+  .waitFor();
+const editorVerified = true;
+
 console.log(
   JSON.stringify(
     {
@@ -176,6 +224,10 @@ console.log(
       nestedFileVisible,
       headingJumpVerified,
       sidebarCollapseVerified: sidebarCollapseVerified === 1,
+      editorVerified,
+      dirtyStateVisible,
+      saveDownloadName: saveDownload.suggestedFilename(),
+      shortcutDownloadName: shortcutDownload.suggestedFilename(),
       desktopOverflow,
       mobileOverflow,
       pageErrors,

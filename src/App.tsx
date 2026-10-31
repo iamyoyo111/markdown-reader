@@ -1,20 +1,29 @@
 import {
   ArrowUp,
   AudioLines,
+  Bold,
   BookA,
   Check,
   ChevronRight,
+  Code2,
   Copy,
+  Eye,
   FileText,
   FolderOpen,
+  Heading2,
+  Italic,
   Languages,
+  Link2,
+  List,
   ListTree,
   LoaderCircle,
   Menu,
   Minus,
   Pause,
+  Pencil,
   Play,
   Plus,
+  Save,
   Search,
   Settings2,
   Square,
@@ -42,6 +51,7 @@ import type {
   DocFile,
   SpeechEngine,
   ToastState,
+  WritableFileHandle,
 } from "./types";
 
 type DirectoryHandleWithValues = FileSystemDirectoryHandle & {
@@ -210,11 +220,14 @@ function App() {
   const [files, setFiles] = useState<DocFile[]>([]);
   const [activePath, setActivePath] = useState("");
   const [content, setContent] = useState(SAMPLE_MARKDOWN);
+  const [savedContent, setSavedContent] = useState(SAMPLE_MARKDOWN);
   const [isSample, setIsSample] = useState(true);
   const [folderName, setFolderName] = useState("示例文章");
   const [fileSearch, setFileSearch] = useState("");
   const [isLoadingFolder, setIsLoadingFolder] = useState(false);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [fontSize, setFontSize] = useState(18);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [dictionary, setDictionary] = useState<DictionaryEntry | null>(null);
@@ -239,11 +252,13 @@ function App() {
   const [activeHeadingId, setActiveHeadingId] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const articleRef = useRef<HTMLElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef("");
   const playbackTypeRef = useRef<"audio" | "browser" | null>(null);
+  const isDirty = content !== savedContent;
 
   const renderedMarkdown = useMemo(
     () => renderMarkdownDocument(content),
@@ -354,10 +369,41 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveDocument();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("keydown", handleSaveShortcut);
+    };
+  }, [content, isDirty, activeFile, isSaving]);
+
+  function confirmDiscardChanges() {
+    return (
+      !isDirty ||
+      window.confirm("当前文档有未保存的修改。确定要放弃这些修改吗？")
+    );
+  }
+
   async function chooseFolder() {
+    if (!confirmDiscardChanges()) return;
     const picker = (
       window as Window & {
-        showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+        showDirectoryPicker?: (options?: {
+          mode?: "read" | "readwrite";
+        }) => Promise<FileSystemDirectoryHandle>;
       }
     ).showDirectoryPicker;
 
@@ -368,7 +414,9 @@ function App() {
 
     try {
       setIsLoadingFolder(true);
-      const directory = (await picker()) as DirectoryHandleWithValues;
+      const directory = (await picker({
+        mode: "readwrite",
+      })) as DirectoryHandleWithValues;
       const markdownFiles = (await collectMarkdownFiles(directory)).sort((a, b) =>
         a.path.localeCompare(b.path),
       );
@@ -384,7 +432,9 @@ function App() {
       setIsSample(false);
       setActivePath("");
       setContent("");
-      await openFile(markdownFiles[0]);
+      setSavedContent("");
+      setIsEditing(false);
+      await openFile(markdownFiles[0], true);
       setShowSidebar(false);
     } catch (error) {
       if ((error as DOMException).name !== "AbortError") {
@@ -395,7 +445,8 @@ function App() {
     }
   }
 
-  async function openFile(doc: DocFile) {
+  async function openFile(doc: DocFile, skipDirtyCheck = false) {
+    if (!skipDirtyCheck && !confirmDiscardChanges()) return;
     try {
       setIsLoadingFile(true);
       const file = doc.file ?? (await doc.handle?.getFile());
@@ -403,6 +454,8 @@ function App() {
       const text = await file.text();
       setActivePath(doc.path);
       setContent(text);
+      setSavedContent(text);
+      setIsEditing(false);
       setContextMenu(null);
       setDictionary(null);
       setDictionaryError("");
@@ -417,6 +470,7 @@ function App() {
 
   function handleFallbackFiles(fileList: FileList | null) {
     if (!fileList) return;
+    if (!confirmDiscardChanges()) return;
     const nextFiles = filesFromInput(fileList);
     if (nextFiles.length === 0) {
       showToast("这个文件夹里没有找到 Markdown 文件。", "error");
@@ -427,7 +481,111 @@ function App() {
     setFolderName(root);
     setFileSearch("");
     setIsSample(false);
-    void openFile(nextFiles[0]);
+    void openFile(nextFiles[0], true);
+  }
+
+  function downloadMarkdown(text: string, fileName: string) {
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function saveDocument() {
+    if (isSaving) return;
+    const fileName =
+      activeFile?.name || (isSample ? "technical-interview-guide.md" : "document.md");
+    setIsSaving(true);
+
+    try {
+      const handle = activeFile?.handle as WritableFileHandle | undefined;
+      if (handle?.createWritable) {
+        let permission =
+          (await handle.queryPermission?.({ mode: "readwrite" })) ?? "prompt";
+        if (
+          permission !== "granted" &&
+          typeof handle.requestPermission === "function"
+        ) {
+          permission = await handle.requestPermission({ mode: "readwrite" });
+        }
+
+        if (permission === "granted") {
+          const writable = await handle.createWritable();
+          await writable.write(content);
+          await writable.close();
+          setSavedContent(content);
+          setFiles((currentFiles) =>
+            currentFiles.map((file) =>
+              file.path === activePath
+                ? {
+                    ...file,
+                    lastModified: Date.now(),
+                    size: new Blob([content]).size,
+                  }
+                : file,
+            ),
+          );
+          showToast("已保存到原 Markdown 文件。");
+          return;
+        }
+      }
+
+      downloadMarkdown(content, fileName);
+      setSavedContent(content);
+      showToast("已下载 Markdown 副本；上传模式无法覆盖原文件。");
+    } catch {
+      downloadMarkdown(content, fileName);
+      setSavedContent(content);
+      showToast("无法写入原文件，已下载 Markdown 副本。", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function insertMarkdownSnippet(
+    prefix: string,
+    suffix = prefix,
+    placeholder = "文本",
+  ) {
+    const editor = editorRef.current;
+    const start = editor?.selectionStart ?? content.length;
+    const end = editor?.selectionEnd ?? content.length;
+    const selected = content.slice(start, end);
+    const replacement = `${prefix}${selected || placeholder}${suffix}`;
+    const nextContent =
+      content.slice(0, start) + replacement + content.slice(end);
+    setContent(nextContent);
+    window.requestAnimationFrame(() => {
+      editor?.focus();
+      editor?.setSelectionRange(
+        start + prefix.length,
+        start + prefix.length + (selected || placeholder).length,
+      );
+    });
+  }
+
+  function prefixCurrentLine(prefix: string) {
+    const editor = editorRef.current;
+    const cursor = editor?.selectionStart ?? content.length;
+    const lineStart = content.lastIndexOf("\n", cursor - 1) + 1;
+    const nextContent =
+      content.slice(0, lineStart) + prefix + content.slice(lineStart);
+    setContent(nextContent);
+    window.requestAnimationFrame(() => {
+      editor?.focus();
+      editor?.setSelectionRange(cursor + prefix.length, cursor + prefix.length);
+    });
+  }
+
+  function discardEditing() {
+    if (!confirmDiscardChanges()) return;
+    setContent(savedContent);
+    setIsEditing(false);
   }
 
   function handleContextMenu(event: React.MouseEvent) {
@@ -666,10 +824,15 @@ function App() {
   }
 
   function jumpToHeading(id: string) {
-    const heading = document.getElementById(id);
-    if (!heading) return;
     setActiveHeadingId(id);
-    heading.scrollIntoView({ behavior: "smooth", block: "start" });
+    setIsEditing(false);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(id)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
     if (window.matchMedia("(max-width: 960px)").matches) {
       setShowSidebar(false);
     }
@@ -924,10 +1087,13 @@ function App() {
                 <button
                   className={`file-item ${isSample ? "active" : ""}`}
                   onClick={() => {
+                    if (!confirmDiscardChanges()) return;
                     setContent(SAMPLE_MARKDOWN);
+                    setSavedContent(SAMPLE_MARKDOWN);
                     setIsSample(true);
                     setActivePath("");
                     setDictionary(null);
+                    setIsEditing(false);
                     setShowSidebar(false);
                   }}
                 >
@@ -1013,6 +1179,45 @@ function App() {
               </strong>
             </div>
             <div className="reader-tools">
+              <div className="mode-switch" role="group" aria-label="阅读与编辑模式">
+                <button
+                  className={!isEditing ? "active" : ""}
+                  onClick={() => setIsEditing(false)}
+                  aria-label="阅读模式"
+                  title="阅读模式"
+                >
+                  <Eye size={15} />
+                  <span>阅读</span>
+                </button>
+                <button
+                  className={isEditing ? "active" : ""}
+                  onClick={() => {
+                    setIsEditing(true);
+                    window.requestAnimationFrame(() => editorRef.current?.focus());
+                  }}
+                  aria-label="编辑 Markdown"
+                  title="编辑 Markdown"
+                >
+                  <Pencil size={14} />
+                  <span>编辑</span>
+                </button>
+              </div>
+              {(isEditing || isDirty) && (
+                <button
+                  className={`save-button ${isDirty ? "has-changes" : ""}`}
+                  onClick={() => void saveDocument()}
+                  disabled={isSaving}
+                  aria-label="保存 Markdown"
+                  title="保存 Markdown（Ctrl+S）"
+                >
+                  {isSaving ? (
+                    <LoaderCircle className="spin" size={15} />
+                  ) : (
+                    <Save size={15} />
+                  )}
+                  <span>{isSaving ? "保存中" : isDirty ? "保存" : "已保存"}</span>
+                </button>
+              )}
               <div className="font-control" aria-label="字号">
                 <button
                   onClick={() => setFontSize((size) => Math.max(15, size - 1))}
@@ -1043,15 +1248,111 @@ function App() {
             </div>
           </div>
 
-          <div className="document-stage">
-            <article
-              ref={articleRef}
-              className={`markdown-body ${isLoadingFile ? "is-loading" : ""}`}
-              style={{ "--reader-font-size": `${fontSize}px` } as React.CSSProperties}
-              onClick={handleArticleClick}
-              onContextMenu={handleContextMenu}
-              dangerouslySetInnerHTML={{ __html: markdownHtml }}
-            />
+          <div className={`document-stage ${isEditing ? "is-editing" : ""}`}>
+            {isEditing ? (
+              <div className="markdown-editor">
+                <div className="editor-toolbar" aria-label="Markdown 格式工具">
+                  <div className="editor-format-tools">
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertMarkdownSnippet("**", "**", "粗体")}
+                      aria-label="加粗"
+                      title="加粗"
+                    >
+                      <Bold size={15} />
+                    </button>
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertMarkdownSnippet("*", "*", "斜体")}
+                      aria-label="斜体"
+                      title="斜体"
+                    >
+                      <Italic size={15} />
+                    </button>
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => prefixCurrentLine("## ")}
+                      aria-label="二级标题"
+                      title="二级标题"
+                    >
+                      <Heading2 size={15} />
+                    </button>
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() =>
+                        insertMarkdownSnippet("[", "](https://)", "链接文字")
+                      }
+                      aria-label="插入链接"
+                      title="插入链接"
+                    >
+                      <Link2 size={15} />
+                    </button>
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertMarkdownSnippet("`", "`", "代码")}
+                      aria-label="行内代码"
+                      title="行内代码"
+                    >
+                      <Code2 size={15} />
+                    </button>
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => prefixCurrentLine("- ")}
+                      aria-label="无序列表"
+                      title="无序列表"
+                    >
+                      <List size={15} />
+                    </button>
+                  </div>
+                  <span className="editor-stats">
+                    {content.length.toLocaleString()} 字符 ·{" "}
+                    {content.split("\n").length} 行
+                  </span>
+                  <button
+                    className="discard-editing"
+                    onClick={discardEditing}
+                    aria-label="放弃编辑"
+                    title="放弃未保存的修改"
+                  >
+                    <X size={14} />
+                    <span>放弃</span>
+                  </button>
+                </div>
+                <textarea
+                  ref={editorRef}
+                  className="markdown-source"
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Tab") return;
+                    event.preventDefault();
+                    const editor = event.currentTarget;
+                    const start = editor.selectionStart;
+                    const end = editor.selectionEnd;
+                    const nextContent =
+                      content.slice(0, start) + "  " + content.slice(end);
+                    setContent(nextContent);
+                    window.requestAnimationFrame(() => {
+                      editor.setSelectionRange(start + 2, start + 2);
+                    });
+                  }}
+                  spellCheck={false}
+                  aria-label="Markdown 源码编辑器"
+                  placeholder="在这里输入 Markdown…"
+                />
+              </div>
+            ) : (
+              <article
+                ref={articleRef}
+                className={`markdown-body ${isLoadingFile ? "is-loading" : ""}`}
+                style={
+                  { "--reader-font-size": `${fontSize}px` } as React.CSSProperties
+                }
+                onClick={handleArticleClick}
+                onContextMenu={handleContextMenu}
+                dangerouslySetInnerHTML={{ __html: markdownHtml }}
+              />
+            )}
             {isLoadingFile && (
               <div className="loading-file">
                 <LoaderCircle className="spin" size={18} />
@@ -1059,8 +1360,15 @@ function App() {
               </div>
             )}
             <div className="document-meta">
-              <span>{formatFileMeta(activeFile)}</span>
-              <span>右键单词查词 · 选中段落后朗读</span>
+              <span>
+                {isEditing ? "Markdown 源码" : formatFileMeta(activeFile)}
+                {isDirty ? " · 未保存" : ""}
+              </span>
+              <span>
+                {isEditing
+                  ? "Ctrl+S 保存 · Tab 可输入缩进"
+                  : "右键单词查词 · 选中段落后朗读"}
+              </span>
             </div>
           </div>
         </main>
