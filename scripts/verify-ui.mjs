@@ -133,17 +133,28 @@ await desktop
   .getByRole("button", { name: /03\. Why this role/ })
   .click();
 await desktop.waitForTimeout(700);
+await desktop.evaluate(() => {
+  const paragraph = Array.from(document.querySelectorAll("p")).find((item) =>
+    item.textContent?.includes("This role combines"),
+  );
+  if (!paragraph) return;
+  const top = paragraph.getBoundingClientRect().top;
+  window.scrollTo({ top: window.scrollY + top - 150 });
+});
+await desktop.waitForTimeout(200);
 await desktop.getByRole("button", { name: "编辑 Markdown" }).click();
 const returnPositionEditor = desktop.getByRole("textbox", {
   name: "Markdown 源码编辑器",
 });
-await returnPositionEditor.evaluate((element) => {
+const editorPositionAligned = await returnPositionEditor.evaluate((element) => {
   const editor = element;
-  if (!(editor instanceof HTMLTextAreaElement)) return;
-  const offset = editor.value.indexOf("This role combines");
-  editor.focus();
-  editor.setSelectionRange(offset, offset);
-  editor.dispatchEvent(new Event("select", { bubbles: true }));
+  if (!(editor instanceof HTMLTextAreaElement)) return false;
+  const expected = editor.value.indexOf("This role combines");
+  return (
+    expected >= 0 &&
+    Math.abs(editor.selectionStart - expected) < 8 &&
+    editor.scrollTop > 0
+  );
 });
 await desktop.getByRole("button", { name: "阅读模式" }).click();
 await desktop.waitForTimeout(250);
@@ -253,6 +264,7 @@ console.log(
       nestedFileVisible,
       headingJumpVerified,
       sidebarCollapseVerified: sidebarCollapseVerified === 1,
+      editorPositionAligned,
       editorReturnVerified,
       editorVerified,
       dirtyStateVisible,

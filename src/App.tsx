@@ -206,6 +206,46 @@ function getSourceAnchorAtOffset(source: string, offset: number) {
   return anchor.slice(0, 100);
 }
 
+function findSourceOffsetForRenderedText(
+  source: string,
+  renderedText: string,
+  approximateOffset: number,
+) {
+  const target = normalizeComparableText(renderedText).slice(0, 140);
+  if (target.length < 8) return -1;
+
+  let bestOffset = -1;
+  let bestScore = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let lineOffset = 0;
+
+  for (const line of source.split("\n")) {
+    const normalizedLine = normalizeComparableText(line);
+    if (normalizedLine.length >= 8) {
+      let score = 0;
+      if (target.startsWith(normalizedLine)) {
+        score = Math.min(120, normalizedLine.length + 30);
+      } else if (normalizedLine.startsWith(target.slice(0, 60))) {
+        score = Math.min(110, target.length + 20);
+      } else if (normalizedLine.includes(target.slice(0, 50))) {
+        score = target.slice(0, 50).length;
+      } else if (target.includes(normalizedLine.slice(0, 50))) {
+        score = normalizedLine.slice(0, 50).length;
+      }
+
+      const distance = Math.abs(lineOffset - approximateOffset);
+      if (score > 0 && (score > bestScore || (score === bestScore && distance < bestDistance))) {
+        bestScore = score;
+        bestOffset = lineOffset;
+        bestDistance = distance;
+      }
+    }
+    lineOffset += line.length + 1;
+  }
+
+  return bestScore >= 20 ? bestOffset : -1;
+}
+
 function getCaretRangePoint(x: number, y: number) {
   const documentWithCaret = document as Document & {
     caretPositionFromPoint?: (
@@ -861,19 +901,54 @@ function App() {
     readingScrollRatioRef.current =
       maxScroll > 0 ? Math.min(1, Math.max(0, window.scrollY / maxScroll)) : 0;
 
-    let sourceOffset = Math.floor(
+    const approximateOffset = Math.floor(
       content.length * readingScrollRatioRef.current,
     );
-    let searchFrom = 0;
-    for (const heading of headings) {
-      const headingOffset = content.indexOf(heading.text, searchFrom);
-      if (headingOffset === -1) continue;
-      if (heading.id === activeHeadingId) {
-        sourceOffset = headingOffset;
-        break;
+    const visibleThreshold = 132;
+    const visibleBlocks = articleRef.current
+      ? Array.from(
+          articleRef.current.querySelectorAll<HTMLElement>(
+            "h1, h2, h3, h4, h5, h6, p, li, blockquote, pre, td, th",
+          ),
+        )
+          .map((element) => ({
+            element,
+            rect: element.getBoundingClientRect(),
+          }))
+          .filter(
+            ({ rect }) =>
+              rect.bottom > visibleThreshold + 4 &&
+              rect.top < window.innerHeight - 40,
+          )
+          .sort(
+            (a, b) =>
+              Math.max(a.rect.top, visibleThreshold) -
+              Math.max(b.rect.top, visibleThreshold),
+          )
+      : [];
+    const visibleText = visibleBlocks[0]?.element.textContent ?? "";
+
+    let sourceOffset = findSourceOffsetForRenderedText(
+      content,
+      visibleText,
+      approximateOffset,
+    );
+    if (sourceOffset === -1) {
+      let searchFrom = 0;
+      for (const heading of headings) {
+        const headingOffset = content.indexOf(heading.text, searchFrom);
+        if (headingOffset === -1) continue;
+        if (heading.id === activeHeadingId) {
+          sourceOffset = headingOffset;
+          break;
+        }
+        searchFrom = headingOffset + heading.text.length;
       }
-      searchFrom = headingOffset + heading.text.length;
     }
+    if (sourceOffset === -1) {
+      sourceOffset = approximateOffset;
+    }
+
     editorCursorRef.current = sourceOffset;
     setIsEditing(true);
     window.requestAnimationFrame(() => {
@@ -882,9 +957,10 @@ function App() {
       editor.focus();
       editor.setSelectionRange(sourceOffset, sourceOffset);
       const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
+      const sourceLine = content.slice(0, sourceOffset).split("\n").length;
+      const totalLines = Math.max(1, content.split("\n").length);
       editor.scrollTop =
-        editorMaxScroll *
-        (content.length > 0 ? sourceOffset / content.length : 0);
+        editorMaxScroll * (Math.max(0, sourceLine - 3) / totalLines);
     });
   }
 

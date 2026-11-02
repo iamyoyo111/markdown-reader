@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 - 2026-11-02
+
+### Fixed
+
+- Align the Markdown editor to the paragraph currently visible in reading mode instead of the start of its section.
+- Calculate editor scroll position from the corresponding source line rather than document character ratio.
+
 ## 0.2.1 - 2026-10-31
 
 ### Fixed
